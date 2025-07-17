@@ -8,64 +8,57 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 2rem;
-      background: linear-gradient(to right, #f8f9fa, #fff6f0);
+      padding: 20px;
+      background-color: #f4f4f9;
     }
-    h1, h2 {
-      color: #343a40;
+    h1 {
       text-align: center;
+      color: #333;
     }
     textarea {
       width: 100%;
-      height: 200px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-      font-family: monospace;
-      border: 2px dashed #ccc;
-      border-radius: 8px;
-      background-color: #fff;
-    }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-top: 1rem;
-    }
-    th, td {
-      border: 1px solid #dee2e6;
-      padding: 0.75rem;
-      text-align: left;
-    }
-    th {
-      background-color: #e9ecef;
-    }
-    button {
-      padding: 0.75rem 1.5rem;
-      background-color: #007bff;
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      margin: 0.5rem;
-      border-radius: 5px;
-      transition: background 0.3s ease;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-    canvas {
-      max-width: 100%;
-      margin-top: 2rem;
+      height: 300px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
     }
     .export-buttons {
       display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 1rem;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .export-buttons button {
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .export-buttons button:hover {
+      background-color: #45a049;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      text-align: left;
+    }
+    table th, table td {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+    }
+    canvas {
+      max-width: 100%;
+      height: auto;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>🔍 Analisador de Log de Impressora Lexmark M5270 </h1>
+  <h1>🔍 Analisador de Log de Impressora Lexmark M5270</h1>
   <textarea id="logInput" placeholder="Cole o log da impressora aqui..."></textarea>
+  
   <div class="export-buttons">
     <button onclick="analisarLog()">Gerar Relatório</button>
     <button onclick="exportarCSV()">Exportar CSV</button>
@@ -74,11 +67,14 @@
 
   <h2>📋 Relatório Mensal por Tipo de Evento</h2>
   <div id="tabelaRelatorio"></div>
+
   <h2>📊 Gráfico Geral por Tipo de Evento</h2>
   <canvas id="graficoErros"></canvas>
+
   <h2>📈 Gráfico Mensal por Tipo de Evento</h2>
   <canvas id="graficoMensal"></canvas>
 
+  <!-- Script JavaScript -->
   <script>
     let ultimoResumo = [];
 
@@ -137,112 +133,91 @@
         html += '</table>';
         document.getElementById('tabelaRelatorio').innerHTML = html;
 
-        // Gerar gráfico
+        // Gerar gráficos
         gerarGraficos(resumo);
       };
 
       worker.postMessage(log);
     }
 
+    // Função para gerar gráficos usando Chart.js
     function gerarGraficos(resumo) {
-      const agrupadoTipo = {};
-      const agrupadoMensal = {};
-      resumo.forEach(e => {
-        const chaveTipo = `${e.tipo} - ${e.nome}`;
-        agrupadoTipo[chaveTipo] = (agrupadoTipo[chaveTipo] || 0) + 1;
-
-        const mesAno = `${e.mes}/${e.ano}`;
-        if (!agrupadoMensal[mesAno]) agrupadoMensal[mesAno] = {};
-        agrupadoMensal[mesAno][chaveTipo] = (agrupadoMensal[mesAno][chaveTipo] || 0) + 1;
-      });
-
-      const ctx1 = document.getElementById('graficoErros').getContext('2d');
-      if (window.chartInstance1) window.chartInstance1.destroy();
-      window.chartInstance1 = new Chart(ctx1, {
+      // Gráfico de Erros
+      const ctxErros = document.getElementById('graficoErros').getContext('2d');
+      const dadosErros = resumo.map(e => e.total);
+      const labelsErros = resumo.map(e => `${e.tipo}: ${e.nome}`);
+      
+      new Chart(ctxErros, {
         type: 'bar',
         data: {
-          labels: Object.keys(agrupadoTipo),
+          labels: labelsErros,
           datasets: [{
-            label: 'Total por Tipo de Evento',
-            data: Object.values(agrupadoTipo),
-            backgroundColor: '#007bff'
+            label: 'Total de Erros',
+            data: dadosErros,
+            backgroundColor: '#42A5F5',
           }]
         },
         options: {
           responsive: true,
-          plugins: {
-            legend: { display: false },
-            title: { display: true, text: 'Erros por Tipo no Período' }
+          scales: {
+            y: {
+              beginAtZero: true
+            }
           }
         }
       });
 
-      const mesesOrdenados = Object.keys(agrupadoMensal).sort((a,b) => {
-        const [m1, y1] = a.split('/');
-        const [m2, y2] = b.split('/');
-        const data1 = new Date(`${m1} 1, ${y1}`);
-        const data2 = new Date(`${m2} 1, ${y2}`);
-        return data1 - data2;
-      });
+      // Gráfico Mensal
+      const ctxMensal = document.getElementById('graficoMensal').getContext('2d');
+      const mensalResumo = resumo.reduce((acc, item) => {
+        const chave = `${item.ano}-${item.mes}`;
+        acc[chave] = (acc[chave] || 0) + item.total;
+        return acc;
+      }, {});
 
-      const todosTipos = [...new Set(resumo.map(e => `${e.tipo} - ${e.nome}`))];
-      const datasets = todosTipos.map(tipo => {
-        return {
-          label: tipo,
-          data: mesesOrdenados.map(mesAno => agrupadoMensal[mesAno][tipo] || 0),
-          fill: false,
-          borderColor: getRandomColor(),
-          tension: 0.1
-        };
-      });
+      const labelsMensal = Object.keys(mensalResumo);
+      const dadosMensal = Object.values(mensalResumo);
 
-      const ctx2 = document.getElementById('graficoMensal').getContext('2d');
-      if (window.chartInstance2) window.chartInstance2.destroy();
-      window.chartInstance2 = new Chart(ctx2, {
+      new Chart(ctxMensal, {
         type: 'line',
         data: {
-          labels: mesesOrdenados,
-          datasets
+          labels: labelsMensal,
+          datasets: [{
+            label: 'Eventos por Mês',
+            data: dadosMensal,
+            borderColor: '#66BB6A',
+            fill: false,
+          }]
         },
         options: {
           responsive: true,
-          plugins: {
-            title: { display: true, text: 'Erros Mensais' },
-            legend: { position: 'top' }
+          scales: {
+            y: {
+              beginAtZero: true
+            }
           }
         }
       });
     }
 
-    function getRandomColor() {
-      const letters = '0123456789ABCDEF';
-      let color = '#';
-      for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-      }
-      return color;
-    }
-
-    // Função para exportar para CSV
+    // Função para exportar CSV
     function exportarCSV() {
-      const rows = [
-        ['Ano', 'Mês', 'Código do Evento', 'Nome do Evento', 'Total']
-      ];
-      ultimoResumo.forEach(row => {
-        rows.push([row.ano, row.mes, row.tipo, row.nome, row.total]);
-      });
+      const csvContent = "data:text/csv;charset=utf-8,";
+      const header = ["Ano", "Mês", "Código do Evento", "Nome do Evento", "Total"].join(",") + "\n";
+      const rows = ultimoResumo.map(row => [
+        row.ano,
+        row.mes,
+        row.tipo,
+        row.nome,
+        row.total
+      ].join(",")).join("\n");
 
-      let csvContent = 'data:text/csv;charset=utf-8,';
-      rows.forEach(row => {
-        csvContent += row.join(',') + '\\n';
-      });
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', 'relatorio_log.csv');
+      const link = document.createElement("a");
+      link.setAttribute("href", csvContent + header + rows);
+      link.setAttribute("download", "relatorio_lexmark.csv");
       document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     }
   </script>
 </body>
