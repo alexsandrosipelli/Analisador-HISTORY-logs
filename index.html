@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analisador de Log de Impressora Lexmark M5270</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: linear-gradient(to right, #f8f9fa, #fff6f0);
+    }
+    h1, h2 {
+      color: #343a40;
+      text-align: center;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      font-family: monospace;
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      background-color: #fff;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #dee2e6;
+      padding: 0.75rem;
+      text-align: left;
+    }
+    th {
+      background-color: #e9ecef;
+    }
+    button {
+      padding: 0.75rem 1.5rem;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      margin: 0.5rem;
+      border-radius: 5px;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    canvas {
+      max-width: 100%;
+      margin-top: 2rem;
+    }
+    .export-buttons {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Analisador de Log de Impressora Lexmark M5270 </h1>
+  <textarea id="logInput" placeholder="Cole o log da impressora aqui..."></textarea>
+  <div class="export-buttons">
+    <button onclick="analisarLog()">Gerar Relatório</button>
+    <button onclick="exportarCSV()">Exportar CSV</button>
+    <button onclick="window.print()">Imprimir / Salvar PDF</button>
+  </div>
+
+  <h2>📋 Relatório Mensal por Tipo de Evento</h2>
+  <div id="tabelaRelatorio"></div>
+  <h2>📊 Gráfico Geral por Tipo de Evento</h2>
+  <canvas id="graficoErros"></canvas>
+  <h2>📈 Gráfico Mensal por Tipo de Evento</h2>
+  <canvas id="graficoMensal"></canvas>
+
+  <script>
+    let ultimoResumo = [];
+
+    function analisarLog() {
+      const log = document.getElementById('logInput').value;
+      const linhas = log.split('\n');
+      const eventos = [];
+      const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+      linhas.forEach((linha, i) => {
+        const dataRegex = /([0-9]{1,2}) de ([a-zç]+) de ([0-9]{4})/i;
+        const matchData = linha.match(dataRegex);
+        if (matchData && linhas[i + 3]) {
+          const dia = parseInt(matchData[1]);
+          const mesTexto = matchData[2].toLowerCase();
+          const ano = parseInt(matchData[3]);
+          const eventoLinha = linhas[i + 3];
+          const tipoCompleto = eventoLinha.split('_')[0];
+          const tipoNome = eventoLinha.split('_').slice(1).join(' ').replace(/\[.*?\]/g, '').replace(/_/g, ' ').trim();
+          const mesPadronizado = mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
+          eventos.push({ ano, mes: mesPadronizado, tipo: tipoCompleto, nome: tipoNome });
+        }
+      });
+
+      const resumo = {};
+      eventos.forEach(e => {
+        const chave = `${e.ano}-${e.mes}-${e.tipo}-${e.nome}`;
+        resumo[chave] = (resumo[chave] || 0) + 1;
+      });
+
+      ultimoResumo = Object.entries(resumo).map(([chave, total]) => {
+        const [ano, mes, tipo, ...nomeArr] = chave.split('-');
+        const nome = nomeArr.join('-');
+        return { ano, mes, tipo, nome, total };
+      });
+
+      let html = '<table><tr><th>Ano</th><th>Mês</th><th>Código do Evento</th><th>Nome do Evento</th><th>Total</th></tr>';
+      ultimoResumo.forEach(row => {
+        html += `<tr><td>${row.ano}</td><td>${row.mes}</td><td>${row.tipo}</td><td>${row.nome}</td><td>${row.total}</td></tr>`;
+      });
+      html += '</table>';
+      document.getElementById('tabelaRelatorio').innerHTML = html;
+
+      const agrupadoTipo = {};
+      const agrupadoMensal = {};
+      eventos.forEach(e => {
+        const chaveTipo = `${e.tipo} - ${e.nome}`;
+        agrupadoTipo[chaveTipo] = (agrupadoTipo[chaveTipo] || 0) + 1;
+
+        const mesAno = `${e.mes}/${e.ano}`;
+        if (!agrupadoMensal[mesAno]) agrupadoMensal[mesAno] = {};
+        agrupadoMensal[mesAno][chaveTipo] = (agrupadoMensal[mesAno][chaveTipo] || 0) + 1;
+      });
+
+      const ctx1 = document.getElementById('graficoErros').getContext('2d');
+      if (window.chartInstance1) window.chartInstance1.destroy();
+      window.chartInstance1 = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(agrupadoTipo),
+          datasets: [{
+            label: 'Total por Tipo de Evento',
+            data: Object.values(agrupadoTipo),
+            backgroundColor: '#007bff'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Erros por Tipo no Período' }
+          }
+        }
+      });
+
+      const mesesOrdenados = Object.keys(agrupadoMensal).sort((a,b) => {
+        const [m1, y1] = a.split('/');
+        const [m2, y2] = b.split('/');
+        const data1 = new Date(`${m1} 1, ${y1}`);
+        const data2 = new Date(`${m2} 1, ${y2}`);
+        return data1 - data2;
+      });
+
+      const todosTipos = [...new Set(eventos.map(e => `${e.tipo} - ${e.nome}`))];
+      const datasets = todosTipos.map(tipo => {
+        return {
+          label: tipo,
+          data: mesesOrdenados.map(m => agrupadoMensal[m][tipo] || 0),
+          backgroundColor: '#' + Math.floor(Math.random()*16777215).toString(16)
+        };
+      });
+
+      const ctx2 = document.getElementById('graficoMensal').getContext('2d');
+      if (window.chartInstance2) window.chartInstance2.destroy();
+      window.chartInstance2 = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: mesesOrdenados,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Distribuição Mensal de Eventos por Tipo'
+            }
+          },
+          scales: {
+            x: { stacked: true },
+            y: { stacked: true }
+          }
+        }
+      });
+    }
+
+    function exportarCSV() {
+      if (!ultimoResumo.length) return;
+      const linhas = ['Ano,Mês,Código do Evento,Nome do Evento,Total'];
+      ultimoResumo.forEach(l => {
+        linhas.push(`${l.ano},${l.mes},${l.tipo},"${l.nome}",${l.total}`);
+      });
+      const blob = new Blob([linhas.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'relatorio_log_impressora.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
