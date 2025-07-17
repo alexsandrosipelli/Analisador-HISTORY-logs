@@ -65,13 +65,10 @@
     <button onclick="window.print()">Imprimir / Salvar PDF</button>
   </div>
 
-  <h2>📋 Relatório de Erros por Data</h2>
+  <h2>📋 Relatório de Erros por Mês</h2>
   <div id="tabelaRelatorio"></div>
 
-  <h2>📊 Gráfico Geral por Tipo de Evento</h2>
-  <canvas id="graficoErros"></canvas>
-
-  <h2>📈 Gráfico Mensal por Tipo de Evento</h2>
+  <h2>📊 Gráfico de Erros por Mês</h2>
   <canvas id="graficoMensal"></canvas>
 
   <script>
@@ -88,44 +85,42 @@
           const eventos = [];
 
           let dataAtual = '';
-          let codigoErro = '';
           let descricaoErro = '';
 
-          linhas.forEach((linha, i) => {
+          linhas.forEach((linha) => {
+            // Extraindo a data de @DATETIME
             const dataRegex = /@DATETIME\s+([0-9\-]+T[0-9:]+[-+][0-9]{4})/;
             const matchData = linha.match(dataRegex);
             if (matchData) {
-              dataAtual = matchData[1]; 
+              dataAtual = matchData[1]; // Pega a data
             }
 
-            const erroRegex = /([A-Za-z0-9]+)_(.*)\.\[([0-9\.]+)\]/;
+            // Extraindo a descrição do erro (qualquer evento)
+            const erroRegex = /([A-Za-z0-9]+(?:[.]\d+)?(?:_[A-Za-z0-9]+)?)/;
             const matchErro = linha.match(erroRegex);
             if (matchErro) {
-              codigoErro = matchErro[1]; 
-              descricaoErro = matchErro[2].replace(/_/g, ' '); 
+              descricaoErro = matchErro[1]; // Pega o erro
             }
 
-            if (dataAtual && codigoErro && descricaoErro) {
+            if (dataAtual && descricaoErro) {
               eventos.push({ 
                 data: dataAtual, 
-                codigo: codigoErro, 
                 descricao: descricaoErro 
               });
-              dataAtual = '';
-              codigoErro = '';
-              descricaoErro = '';
+              dataAtual = ''; // Resetando a data
+              descricaoErro = ''; // Resetando a descrição
             }
           });
 
+          // Agrupando erros por mês e ano
           const resumo = {};
           eventos.forEach(e => {
-            const chave = `${e.data}-${e.codigo}-${e.descricao}`;
-            resumo[chave] = (resumo[chave] || 0) + 1;
+            const mesAno = e.data.split('T')[0].slice(0, 7); // Extraímos o mês e o ano no formato yyyy-mm
+            resumo[mesAno] = (resumo[mesAno] || 0) + 1;
           });
 
-          const resultado = Object.entries(resumo).map(([chave, total]) => {
-            const [data, codigo, descricao] = chave.split('-');
-            return { data, codigo, descricao, total };
+          const resultado = Object.entries(resumo).map(([mesAno, total]) => {
+            return { mesAno, total };
           });
 
           postMessage(resultado);
@@ -135,33 +130,35 @@
       worker.onmessage = function(e) {
         const resumo = e.data;
 
+        // Atualizar a tabela com os dados processados
         ultimoResumo = resumo;
-        let html = '<table><tr><th>Data</th><th>Código do Evento</th><th>Descrição</th><th>Total</th></tr>';
+        let html = '<table><tr><th>Mês/Ano</th><th>Total de Erros</th></tr>';
         resumo.forEach(row => {
-          html += `<tr><td>${row.data}</td><td>${row.codigo}</td><td>${row.descricao}</td><td>${row.total}</td></tr>`;
+          html += `<tr><td>${row.mesAno}</td><td>${row.total}</td></tr>`;
         });
         html += '</table>';
         document.getElementById('tabelaRelatorio').innerHTML = html;
 
-        gerarGraficos(resumo);
+        // Gerar gráfico de erros por mês
+        gerarGraficoMensal(resumo);
       };
 
       worker.postMessage(log);
     }
 
-    // Função para gerar gráficos
-    function gerarGraficos(resumo) {
-      const ctxErros = document.getElementById('graficoErros').getContext('2d');
-      const dadosErros = resumo.map(e => e.total);
-      const labelsErros = resumo.map(e => `${e.codigo}: ${e.descricao}`);
+    // Função para gerar gráfico de erros por mês
+    function gerarGraficoMensal(resumo) {
+      const ctxMensal = document.getElementById('graficoMensal').getContext('2d');
+      const labelsMensal = resumo.map(item => item.mesAno);
+      const dadosMensal = resumo.map(item => item.total);
 
-      new Chart(ctxErros, {
+      new Chart(ctxMensal, {
         type: 'bar',
         data: {
-          labels: labelsErros,
+          labels: labelsMensal,
           datasets: [{
-            label: 'Total de Erros',
-            data: dadosErros,
+            label: 'Erros por Mês',
+            data: dadosMensal,
             backgroundColor: '#42A5F5',
           }]
         },
@@ -174,52 +171,20 @@
           }
         }
       });
-
-      const ctxMensal = document.getElementById('graficoMensal').getContext('2d');
-      const mensalResumo = resumo.reduce((acc, item) => {
-        const chave = item.data.split('T')[0]; 
-        acc[chave] = (acc[chave] || 0) + item.total;
-        return acc;
-      }, {});
-
-      const labelsMensal = Object.keys(mensalResumo);
-      const dadosMensal = Object.values(mensalResumo);
-
-      new Chart(ctxMensal, {
-        type: 'line',
-        data: {
-          labels: labelsMensal,
-          datasets: [{
-            label: 'Eventos por Mês',
-            data: dadosMensal,
-            borderColor: '#66BB6A',
-            fill: false,
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: {
-              beginAtZero: true
-            }
-          }
-        }
-      });
     }
 
+    // Função para exportar dados como CSV
     function exportarCSV() {
       const csvContent = "data:text/csv;charset=utf-8,";
-      const header = ["Data", "Código do Evento", "Descrição", "Total"].join(",") + "\n";
+      const header = ["Mês/Ano", "Total de Erros"].join(",") + "\n";
       const rows = ultimoResumo.map(row => [
-        row.data,
-        row.codigo,
-        row.descricao,
+        row.mesAno,
         row.total
       ].join(",")).join("\n");
 
       const link = document.createElement("a");
       link.setAttribute("href", csvContent + header + rows);
-      link.setAttribute("download", "relatorio_lexmark.csv");
+      link.setAttribute("download", "relatorio_erros_por_mes.csv");
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
