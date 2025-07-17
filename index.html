@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analisador de Log de Impressora Lexmark M5270</title>
+  <title>Analisador de Log - Lexmark M5270</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -82,49 +82,72 @@
   <script>
     let ultimoResumo = [];
 
+    // Função principal que processa o log
     function analisarLog() {
       const log = document.getElementById('logInput').value;
-      const linhas = log.split('\n');
-      const eventos = [];
-      const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
-      linhas.forEach((linha, i) => {
-        const dataRegex = /([0-9]{1,2}) de ([a-zç]+) de ([0-9]{4})/i;
-        const matchData = linha.match(dataRegex);
-        if (matchData && linhas[i + 3]) {
-          const dia = parseInt(matchData[1]);
-          const mesTexto = matchData[2].toLowerCase();
-          const ano = parseInt(matchData[3]);
-          const eventoLinha = linhas[i + 3];
-          const tipoCompleto = eventoLinha.split('_')[0];
-          const tipoNome = eventoLinha.split('_').slice(1).join(' ').replace(/\[.*?\]/g, '').replace(/_/g, ' ').trim();
-          const mesPadronizado = mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
-          eventos.push({ ano, mes: mesPadronizado, tipo: tipoCompleto, nome: tipoNome });
+      // Criar um Web Worker para processar o log em segundo plano
+      const worker = new Worker(URL.createObjectURL(new Blob([`
+        onmessage = function(e) {
+          const log = e.data;
+          const linhas = log.split('\\n');
+          const eventos = [];
+          const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+          linhas.forEach((linha, i) => {
+            const dataRegex = /([0-9]{1,2}) de ([a-zç]+) de ([0-9]{4})/i;
+            const matchData = linha.match(dataRegex);
+            if (matchData && linhas[i + 3]) {
+              const dia = parseInt(matchData[1]);
+              const mesTexto = matchData[2].toLowerCase();
+              const ano = parseInt(matchData[3]);
+              const eventoLinha = linhas[i + 3];
+              const tipoCompleto = eventoLinha.split('_')[0];
+              const tipoNome = eventoLinha.split('_').slice(1).join(' ').replace(/\[.*?\]/g, '').replace(/_/g, ' ').trim();
+              const mesPadronizado = mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
+              eventos.push({ ano, mes: mesPadronizado, tipo: tipoCompleto, nome: tipoNome });
+            }
+          });
+
+          const resumo = {};
+          eventos.forEach(e => {
+            const chave = `${e.ano}-${e.mes}-${e.tipo}-${e.nome}`;
+            resumo[chave] = (resumo[chave] || 0) + 1;
+          });
+
+          const resultado = Object.entries(resumo).map(([chave, total]) => {
+            const [ano, mes, tipo, ...nomeArr] = chave.split('-');
+            const nome = nomeArr.join('-');
+            return { ano, mes, tipo, nome, total };
+          });
+
+          postMessage(resultado);
         }
-      });
+      `], { type: 'application/javascript' })));
 
-      const resumo = {};
-      eventos.forEach(e => {
-        const chave = `${e.ano}-${e.mes}-${e.tipo}-${e.nome}`;
-        resumo[chave] = (resumo[chave] || 0) + 1;
-      });
+      worker.onmessage = function(e) {
+        const resumo = e.data;
 
-      ultimoResumo = Object.entries(resumo).map(([chave, total]) => {
-        const [ano, mes, tipo, ...nomeArr] = chave.split('-');
-        const nome = nomeArr.join('-');
-        return { ano, mes, tipo, nome, total };
-      });
+        // Atualizar a tabela com os dados processados
+        ultimoResumo = resumo;
+        let html = '<table><tr><th>Ano</th><th>Mês</th><th>Código do Evento</th><th>Nome do Evento</th><th>Total</th></tr>';
+        resumo.forEach(row => {
+          html += `<tr><td>${row.ano}</td><td>${row.mes}</td><td>${row.tipo}</td><td>${row.nome}</td><td>${row.total}</td></tr>`;
+        });
+        html += '</table>';
+        document.getElementById('tabelaRelatorio').innerHTML = html;
 
-      let html = '<table><tr><th>Ano</th><th>Mês</th><th>Código do Evento</th><th>Nome do Evento</th><th>Total</th></tr>';
-      ultimoResumo.forEach(row => {
-        html += `<tr><td>${row.ano}</td><td>${row.mes}</td><td>${row.tipo}</td><td>${row.nome}</td><td>${row.total}</td></tr>`;
-      });
-      html += '</table>';
-      document.getElementById('tabelaRelatorio').innerHTML = html;
+        // Gerar gráfico
+        gerarGraficos(resumo);
+      };
 
+      worker.postMessage(log);
+    }
+
+    function gerarGraficos(resumo) {
       const agrupadoTipo = {};
       const agrupadoMensal = {};
-      eventos.forEach(e => {
+      resumo.forEach(e => {
         const chaveTipo = `${e.tipo} - ${e.nome}`;
         agrupadoTipo[chaveTipo] = (agrupadoTipo[chaveTipo] || 0) + 1;
 
@@ -162,52 +185,64 @@
         return data1 - data2;
       });
 
-      const todosTipos = [...new Set(eventos.map(e => `${e.tipo} - ${e.nome}`))];
+      const todosTipos = [...new Set(resumo.map(e => `${e.tipo} - ${e.nome}`))];
       const datasets = todosTipos.map(tipo => {
         return {
           label: tipo,
-          data: mesesOrdenados.map(m => agrupadoMensal[m][tipo] || 0),
-          backgroundColor: '#' + Math.floor(Math.random()*16777215).toString(16)
+          data: mesesOrdenados.map(mesAno => agrupadoMensal[mesAno][tipo] || 0),
+          fill: false,
+          borderColor: getRandomColor(),
+          tension: 0.1
         };
       });
 
       const ctx2 = document.getElementById('graficoMensal').getContext('2d');
       if (window.chartInstance2) window.chartInstance2.destroy();
       window.chartInstance2 = new Chart(ctx2, {
-        type: 'bar',
+        type: 'line',
         data: {
           labels: mesesOrdenados,
-          datasets: datasets
+          datasets
         },
         options: {
           responsive: true,
           plugins: {
-            title: {
-              display: true,
-              text: 'Distribuição Mensal de Eventos por Tipo'
-            }
-          },
-          scales: {
-            x: { stacked: true },
-            y: { stacked: true }
+            title: { display: true, text: 'Erros Mensais' },
+            legend: { position: 'top' }
           }
         }
       });
     }
 
+    function getRandomColor() {
+      const letters = '0123456789ABCDEF';
+      let color = '#';
+      for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+
+    // Função para exportar para CSV
     function exportarCSV() {
-      if (!ultimoResumo.length) return;
-      const linhas = ['Ano,Mês,Código do Evento,Nome do Evento,Total'];
-      ultimoResumo.forEach(l => {
-        linhas.push(`${l.ano},${l.mes},${l.tipo},"${l.nome}",${l.total}`);
+      const rows = [
+        ['Ano', 'Mês', 'Código do Evento', 'Nome do Evento', 'Total']
+      ];
+      ultimoResumo.forEach(row => {
+        rows.push([row.ano, row.mes, row.tipo, row.nome, row.total]);
       });
-      const blob = new Blob([linhas.join('\n')], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'relatorio_log_impressora.csv';
-      a.click();
-      URL.revokeObjectURL(url);
+
+      let csvContent = 'data:text/csv;charset=utf-8,';
+      rows.forEach(row => {
+        csvContent += row.join(',') + '\\n';
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', 'relatorio_log.csv');
+      document.body.appendChild(link);
+      link.click();
     }
   </script>
 </body>
