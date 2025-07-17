@@ -65,7 +65,7 @@
     <button onclick="window.print()">Imprimir / Salvar PDF</button>
   </div>
 
-  <h2>📋 Relatório Mensal por Tipo de Evento</h2>
+  <h2>📋 Relatório de Erros por Data</h2>
   <div id="tabelaRelatorio"></div>
 
   <h2>📊 Gráfico Geral por Tipo de Evento</h2>
@@ -90,31 +90,47 @@
           const eventos = [];
           const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
+          let dataAtual = '';
+          let codigoErro = '';
+          let descricaoErro = '';
+
           linhas.forEach((linha, i) => {
-            const dataRegex = /([0-9]{1,2}) de ([a-zç]+) de ([0-9]{4})/i;
+            const dataRegex = /@DATETIME\s+([0-9\-]+T[0-9:]+[-+][0-9]{4})/;
             const matchData = linha.match(dataRegex);
-            if (matchData && linhas[i + 3]) {
-              const dia = parseInt(matchData[1]);
-              const mesTexto = matchData[2].toLowerCase();
-              const ano = parseInt(matchData[3]);
-              const eventoLinha = linhas[i + 3];
-              const tipoCompleto = eventoLinha.split('_')[0];
-              const tipoNome = eventoLinha.split('_').slice(1).join(' ').replace(/\[.*?\]/g, '').replace(/_/g, ' ').trim();
-              const mesPadronizado = mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
-              eventos.push({ ano, mes: mesPadronizado, tipo: tipoCompleto, nome: tipoNome });
+            if (matchData) {
+              dataAtual = matchData[1]; // Pega a data de @DATETIME
+            }
+
+            const erroRegex = /([A-Za-z0-9]+)_(.*)\.\[([0-9\.]+)\]/;
+            const matchErro = linha.match(erroRegex);
+            if (matchErro) {
+              codigoErro = matchErro[1]; // Pega o código do erro
+              descricaoErro = matchErro[2].replace(/_/g, ' '); // Pega a descrição do erro
+            }
+
+            if (dataAtual && codigoErro && descricaoErro) {
+              eventos.push({ 
+                data: dataAtual, 
+                codigo: codigoErro, 
+                descricao: descricaoErro 
+              });
+              // Resetando após adicionar o evento
+              dataAtual = '';
+              codigoErro = '';
+              descricaoErro = '';
             }
           });
 
+          // Resumo dos erros por tipo
           const resumo = {};
           eventos.forEach(e => {
-            const chave = `${e.ano}-${e.mes}-${e.tipo}-${e.nome}`;
+            const chave = `${e.data}-${e.codigo}-${e.descricao}`;
             resumo[chave] = (resumo[chave] || 0) + 1;
           });
 
           const resultado = Object.entries(resumo).map(([chave, total]) => {
-            const [ano, mes, tipo, ...nomeArr] = chave.split('-');
-            const nome = nomeArr.join('-');
-            return { ano, mes, tipo, nome, total };
+            const [data, codigo, descricao] = chave.split('-');
+            return { data, codigo, descricao, total };
           });
 
           postMessage(resultado);
@@ -126,9 +142,9 @@
 
         // Atualizar a tabela com os dados processados
         ultimoResumo = resumo;
-        let html = '<table><tr><th>Ano</th><th>Mês</th><th>Código do Evento</th><th>Nome do Evento</th><th>Total</th></tr>';
+        let html = '<table><tr><th>Data</th><th>Código do Evento</th><th>Descrição</th><th>Total</th></tr>';
         resumo.forEach(row => {
-          html += `<tr><td>${row.ano}</td><td>${row.mes}</td><td>${row.tipo}</td><td>${row.nome}</td><td>${row.total}</td></tr>`;
+          html += `<tr><td>${row.data}</td><td>${row.codigo}</td><td>${row.descricao}</td><td>${row.total}</td></tr>`;
         });
         html += '</table>';
         document.getElementById('tabelaRelatorio').innerHTML = html;
@@ -145,7 +161,7 @@
       // Gráfico de Erros
       const ctxErros = document.getElementById('graficoErros').getContext('2d');
       const dadosErros = resumo.map(e => e.total);
-      const labelsErros = resumo.map(e => `${e.tipo}: ${e.nome}`);
+      const labelsErros = resumo.map(e => `${e.codigo}: ${e.descricao}`);
       
       new Chart(ctxErros, {
         type: 'bar',
@@ -170,7 +186,7 @@
       // Gráfico Mensal
       const ctxMensal = document.getElementById('graficoMensal').getContext('2d');
       const mensalResumo = resumo.reduce((acc, item) => {
-        const chave = `${item.ano}-${item.mes}`;
+        const chave = item.data.split('T')[0]; // Data no formato yyyy-mm-dd
         acc[chave] = (acc[chave] || 0) + item.total;
         return acc;
       }, {});
@@ -203,12 +219,11 @@
     // Função para exportar CSV
     function exportarCSV() {
       const csvContent = "data:text/csv;charset=utf-8,";
-      const header = ["Ano", "Mês", "Código do Evento", "Nome do Evento", "Total"].join(",") + "\n";
+      const header = ["Data", "Código do Evento", "Descrição", "Total"].join(",") + "\n";
       const rows = ultimoResumo.map(row => [
-        row.ano,
-        row.mes,
-        row.tipo,
-        row.nome,
+        row.data,
+        row.codigo,
+        row.descricao,
         row.total
       ].join(",")).join("\n");
 
