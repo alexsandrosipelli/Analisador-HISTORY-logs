@@ -74,7 +74,6 @@
   <h2>📈 Gráfico Mensal por Tipo de Evento</h2>
   <canvas id="graficoMensal"></canvas>
 
-  <!-- Script JavaScript -->
   <script>
     let ultimoResumo = [];
 
@@ -82,13 +81,11 @@
     function analisarLog() {
       const log = document.getElementById('logInput').value;
 
-      // Criar um Web Worker para processar o log em segundo plano
       const worker = new Worker(URL.createObjectURL(new Blob([`
         onmessage = function(e) {
           const log = e.data;
           const linhas = log.split('\\n');
           const eventos = [];
-          const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
           let dataAtual = '';
           let codigoErro = '';
@@ -98,14 +95,14 @@
             const dataRegex = /@DATETIME\s+([0-9\-]+T[0-9:]+[-+][0-9]{4})/;
             const matchData = linha.match(dataRegex);
             if (matchData) {
-              dataAtual = matchData[1]; // Pega a data de @DATETIME
+              dataAtual = matchData[1]; 
             }
 
             const erroRegex = /([A-Za-z0-9]+)_(.*)\.\[([0-9\.]+)\]/;
             const matchErro = linha.match(erroRegex);
             if (matchErro) {
-              codigoErro = matchErro[1]; // Pega o código do erro
-              descricaoErro = matchErro[2].replace(/_/g, ' '); // Pega a descrição do erro
+              codigoErro = matchErro[1]; 
+              descricaoErro = matchErro[2].replace(/_/g, ' '); 
             }
 
             if (dataAtual && codigoErro && descricaoErro) {
@@ -114,14 +111,12 @@
                 codigo: codigoErro, 
                 descricao: descricaoErro 
               });
-              // Resetando após adicionar o evento
               dataAtual = '';
               codigoErro = '';
               descricaoErro = '';
             }
           });
 
-          // Resumo dos erros por tipo
           const resumo = {};
           eventos.forEach(e => {
             const chave = `${e.data}-${e.codigo}-${e.descricao}`;
@@ -140,7 +135,6 @@
       worker.onmessage = function(e) {
         const resumo = e.data;
 
-        // Atualizar a tabela com os dados processados
         ultimoResumo = resumo;
         let html = '<table><tr><th>Data</th><th>Código do Evento</th><th>Descrição</th><th>Total</th></tr>';
         resumo.forEach(row => {
@@ -149,20 +143,18 @@
         html += '</table>';
         document.getElementById('tabelaRelatorio').innerHTML = html;
 
-        // Gerar gráficos
         gerarGraficos(resumo);
       };
 
       worker.postMessage(log);
     }
 
-    // Função para gerar gráficos usando Chart.js
+    // Função para gerar gráficos
     function gerarGraficos(resumo) {
-      // Gráfico de Erros
       const ctxErros = document.getElementById('graficoErros').getContext('2d');
       const dadosErros = resumo.map(e => e.total);
       const labelsErros = resumo.map(e => `${e.codigo}: ${e.descricao}`);
-      
+
       new Chart(ctxErros, {
         type: 'bar',
         data: {
@@ -183,10 +175,9 @@
         }
       });
 
-      // Gráfico Mensal
       const ctxMensal = document.getElementById('graficoMensal').getContext('2d');
       const mensalResumo = resumo.reduce((acc, item) => {
-        const chave = item.data.split('T')[0]; // Data no formato yyyy-mm-dd
+        const chave = item.data.split('T')[0]; 
         acc[chave] = (acc[chave] || 0) + item.total;
         return acc;
       }, {});
@@ -216,7 +207,6 @@
       });
     }
 
-    // Função para exportar CSV
     function exportarCSV() {
       const csvContent = "data:text/csv;charset=utf-8,";
       const header = ["Data", "Código do Evento", "Descrição", "Total"].join(",") + "\n";
