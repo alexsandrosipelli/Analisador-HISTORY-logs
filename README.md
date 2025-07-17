@@ -1,0 +1,1 @@
+# Analisador-HISTORY-logs
