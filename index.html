@@ -3,13 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Relatório de Dados</title>
+  <title>Upload e Exibição de Planilha</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header>
-    <h1>Relatório de Dados - Setor e Códigos</h1>
+    <h1>Upload e Exibição de Planilha</h1>
   </header>
+
+  <section class="upload">
+    <label for="file-input">Selecione um arquivo CSV ou XLSX:</label>
+    <input type="file" id="file-input" />
+  </section>
 
   <section class="filters">
     <label for="sector">Filtrar por Setor:</label>
@@ -39,6 +44,7 @@
     </tbody>
   </table>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.4/xlsx.full.min.js"></script> <!-- SheetJS -->
   <script src="app.js"></script>
 </body>
 </html>
