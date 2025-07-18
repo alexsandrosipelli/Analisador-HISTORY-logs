@@ -1,194 +1,44 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analisador de Log - Lexmark M5270</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      background-color: #f4f4f9;
-    }
-    h1 {
-      text-align: center;
-      color: #333;
-    }
-    textarea {
-      width: 100%;
-      height: 300px;
-      padding: 10px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-    }
-    .export-buttons {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-    .export-buttons button {
-      padding: 10px 20px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .export-buttons button:hover {
-      background-color: #45a049;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      text-align: left;
-    }
-    table th, table td {
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-    }
-    canvas {
-      max-width: 100%;
-      height: auto;
-      margin-top: 20px;
-    }
-  </style>
+  <title>Relatório de Dados</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>🔍 Analisador de Log de Impressora Lexmark M5270</h1>
-  <textarea id="logInput" placeholder="Cole o log da impressora aqui..."></textarea>
-  
-  <div class="export-buttons">
-    <button onclick="analisarLog()">Gerar Relatório</button>
-    <button onclick="exportarCSV()">Exportar CSV</button>
-    <button onclick="window.print()">Imprimir / Salvar PDF</button>
-  </div>
+  <header>
+    <h1>Relatório de Dados - Setor e Códigos</h1>
+  </header>
 
-  <h2>📋 Relatório de Erros por Mês</h2>
-  <div id="tabelaRelatorio"></div>
+  <section class="filters">
+    <label for="sector">Filtrar por Setor:</label>
+    <select id="sector">
+      <option value="">Selecione...</option>
+    </select>
+  </section>
 
-  <h2>📊 Gráfico de Erros por Mês</h2>
-  <canvas id="graficoMensal"></canvas>
+  <table id="data-table">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Setor</th>
+        <th>Toner (%)</th>
+        <th>Magenta (%)</th>
+        <th>Yellow (%)</th>
+        <th>Cyan (%)</th>
+        <th>Fotocondutor</th>
+        <th>Fusor</th>
+        <th>Mono Lifetime Count</th>
+        <th>Color Lifetime Count</th>
+        <th>Diferencia diária</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Dados serão inseridos dinamicamente -->
+    </tbody>
+  </table>
 
-  <script>
-    let ultimoResumo = [];
-
-    // Função principal que processa o log
-    function analisarLog() {
-      const log = document.getElementById('logInput').value;
-
-      const worker = new Worker(URL.createObjectURL(new Blob([`
-        onmessage = function(e) {
-          const log = e.data;
-          const linhas = log.split('\\n');
-          const eventos = [];
-
-          let dataAtual = '';
-          let descricaoErro = '';
-
-          linhas.forEach((linha) => {
-            // Extraindo a data de @DATETIME
-            const dataRegex = /@DATETIME\s+([0-9\-]+T[0-9:]+[-+][0-9]{4})/;
-            const matchData = linha.match(dataRegex);
-            if (matchData) {
-              dataAtual = matchData[1]; // Pega a data
-            }
-
-            // Extraindo a descrição do erro (qualquer evento)
-            const erroRegex = /([A-Za-z0-9]+(?:[.]\d+)?(?:_[A-Za-z0-9]+)?)/;
-            const matchErro = linha.match(erroRegex);
-            if (matchErro) {
-              descricaoErro = matchErro[1]; // Pega o erro
-            }
-
-            if (dataAtual && descricaoErro) {
-              eventos.push({ 
-                data: dataAtual, 
-                descricao: descricaoErro 
-              });
-              dataAtual = ''; // Resetando a data
-              descricaoErro = ''; // Resetando a descrição
-            }
-          });
-
-          // Agrupando erros por mês e ano
-          const resumo = {};
-          eventos.forEach(e => {
-            const mesAno = e.data.split('T')[0].slice(0, 7); // Extraímos o mês e o ano no formato yyyy-mm
-            resumo[mesAno] = (resumo[mesAno] || 0) + 1;
-          });
-
-          const resultado = Object.entries(resumo).map(([mesAno, total]) => {
-            return { mesAno, total };
-          });
-
-          postMessage(resultado);
-        }
-      `], { type: 'application/javascript' })));
-
-      worker.onmessage = function(e) {
-        const resumo = e.data;
-
-        // Atualizar a tabela com os dados processados
-        ultimoResumo = resumo;
-        let html = '<table><tr><th>Mês/Ano</th><th>Total de Erros</th></tr>';
-        resumo.forEach(row => {
-          html += `<tr><td>${row.mesAno}</td><td>${row.total}</td></tr>`;
-        });
-        html += '</table>';
-        document.getElementById('tabelaRelatorio').innerHTML = html;
-
-        // Gerar gráfico de erros por mês
-        gerarGraficoMensal(resumo);
-      };
-
-      worker.postMessage(log);
-    }
-
-    // Função para gerar gráfico de erros por mês
-    function gerarGraficoMensal(resumo) {
-      const ctxMensal = document.getElementById('graficoMensal').getContext('2d');
-      const labelsMensal = resumo.map(item => item.mesAno);
-      const dadosMensal = resumo.map(item => item.total);
-
-      new Chart(ctxMensal, {
-        type: 'bar',
-        data: {
-          labels: labelsMensal,
-          datasets: [{
-            label: 'Erros por Mês',
-            data: dadosMensal,
-            backgroundColor: '#42A5F5',
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: {
-              beginAtZero: true
-            }
-          }
-        }
-      });
-    }
-
-    // Função para exportar dados como CSV
-    function exportarCSV() {
-      const csvContent = "data:text/csv;charset=utf-8,";
-      const header = ["Mês/Ano", "Total de Erros"].join(",") + "\n";
-      const rows = ultimoResumo.map(row => [
-        row.mesAno,
-        row.total
-      ].join(",")).join("\n");
-
-      const link = document.createElement("a");
-      link.setAttribute("href", csvContent + header + rows);
-      link.setAttribute("download", "relatorio_erros_por_mes.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
